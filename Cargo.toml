@@ -1,0 +1,12 @@
+[package]
+name = "agent-turn-limit"
+version = "0.1.0"
+edition = "2021"
+description = "Enforce a max-turn cap on LLM agent loops"
+license = "MIT"
+repository = "https://github.com/MukundaKatta/agent-turn-limit-rs"
+keywords = ["llm", "agent", "turns", "loop", "guardrail"]
+categories = ["development-tools"]
+exclude = ["target/*", ".github/*", "*.log"]
+
+[dependencies]
