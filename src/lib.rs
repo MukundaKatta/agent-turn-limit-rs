@@ -64,8 +64,11 @@ impl TurnLimit {
     }
 
     /// Increment turn count by one.
+    ///
+    /// The count saturates at [`usize::MAX`], so this never panics even in an
+    /// unbounded loop running for an extremely long time.
     pub fn increment(&mut self) {
-        self.current += 1;
+        self.current = self.current.saturating_add(1);
     }
 
     /// Increment and immediately check — returns Err if limit now exceeded.
@@ -78,7 +81,10 @@ impl TurnLimit {
     /// Check whether the limit is exceeded without incrementing.
     pub fn check(&self) -> Result<(), TurnLimitExceeded> {
         if self.is_exceeded() {
-            Err(TurnLimitExceeded { current: self.current, max: self.max })
+            Err(TurnLimitExceeded {
+                current: self.current,
+                max: self.max,
+            })
         } else {
             Ok(())
         }
@@ -91,7 +97,11 @@ impl TurnLimit {
 
     /// Fraction of budget consumed [0.0, 1.0].
     pub fn fraction_used(&self) -> f64 {
-        if self.max == 0 { 1.0 } else { self.current as f64 / self.max as f64 }
+        if self.max == 0 {
+            1.0
+        } else {
+            self.current as f64 / self.max as f64
+        }
     }
 }
 
@@ -177,14 +187,18 @@ mod tests {
     #[test]
     fn fraction_used_half() {
         let mut l = TurnLimit::new(10);
-        for _ in 0..5 { l.increment(); }
+        for _ in 0..5 {
+            l.increment();
+        }
         assert!((l.fraction_used() - 0.5).abs() < 1e-9);
     }
 
     #[test]
     fn fraction_used_full() {
         let mut l = TurnLimit::new(4);
-        for _ in 0..4 { l.increment(); }
+        for _ in 0..4 {
+            l.increment();
+        }
         assert!((l.fraction_used() - 1.0).abs() < 1e-9);
     }
 
@@ -197,7 +211,9 @@ mod tests {
     #[test]
     fn remaining_saturates_at_zero() {
         let mut l = TurnLimit::new(2);
-        for _ in 0..5 { l.increment(); }
+        for _ in 0..5 {
+            l.increment();
+        }
         assert_eq!(l.remaining(), 0);
     }
 
@@ -208,5 +224,56 @@ mod tests {
         l.increment();
         assert_eq!(l.current(), 1);
         assert_eq!(l2.current(), 0);
+    }
+
+    #[test]
+    fn increment_saturates_at_usize_max() {
+        let mut l = TurnLimit::new(usize::MAX);
+        l.current = usize::MAX;
+        // Must not panic on overflow; the count stays pinned at the ceiling.
+        l.increment();
+        assert_eq!(l.current(), usize::MAX);
+    }
+
+    #[test]
+    fn fraction_used_zero_max_is_one() {
+        // A zero budget is always fully consumed and avoids division by zero.
+        let l = TurnLimit::new(0);
+        assert_eq!(l.fraction_used(), 1.0);
+    }
+
+    #[test]
+    fn tick_returns_running_count() {
+        let mut l = TurnLimit::new(3);
+        assert_eq!(l.tick().unwrap(), 1);
+        assert_eq!(l.tick().unwrap(), 2);
+    }
+
+    #[test]
+    fn check_does_not_increment() {
+        let l = TurnLimit::new(3);
+        assert!(l.check().is_ok());
+        assert!(l.check().is_ok());
+        assert_eq!(l.current(), 0);
+    }
+
+    #[test]
+    fn error_carries_counts() {
+        let mut l = TurnLimit::new(1);
+        l.increment();
+        let err = l.check().unwrap_err();
+        assert_eq!(err.current, 1);
+        assert_eq!(err.max, 1);
+    }
+
+    #[test]
+    fn reset_allows_reuse_after_exceeded() {
+        let mut l = TurnLimit::new(2);
+        l.increment();
+        l.increment();
+        assert!(l.is_exceeded());
+        l.reset();
+        assert!(!l.is_exceeded());
+        assert!(l.tick().is_ok());
     }
 }
