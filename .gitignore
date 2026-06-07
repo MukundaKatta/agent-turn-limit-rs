@@ -1,1 +1,4 @@
 /target
+
+# Cargo.lock is not committed for libraries (see the Cargo book).
+Cargo.lock
